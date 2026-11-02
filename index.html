@@ -88,7 +88,7 @@ td.sky{font-family:var(--sans)}
     <li><button class="row" data-open="commute"><span class="t">Commute</span><span class="big" id="c-big">--</span><span class="s" id="c-s">Loading</span><span class="chev">›</span></button></li>
     <li><button class="row" data-open="outside"><span class="t">Best time outside</span><span class="big" id="o-big">--</span><span class="s" id="o-s">Loading</span><span class="chev">›</span></button></li>
     <li><button class="row" data-open="snow"><span class="t">Mountain snow</span><span class="big" id="s-big">--</span><span class="s" id="s-s">Loading</span><span class="chev">›</span></button></li>
-    <li><button class="row" data-open="radar"><span class="t">Radar</span><span class="big">Live</span><span class="s">Last two hours, looping</span><span class="chev">›</span></button></li>
+    <li><button class="row" data-open="radar"><span class="t">Radar</span><span class="big">Live</span><span class="s">Last 50 minutes, looping</span><span class="chev">›</span></button></li>
     <li><button class="row" id="a-row" data-open="airport"><span class="t">Airport status</span><span class="big" id="a-big">DEN</span><span class="s" id="a-s">Loading</span><span class="chev">›</span></button></li>
   </ul>
 </main>
@@ -183,12 +183,13 @@ return h+`<p class="note">FAA status covers ground stops, ground delay programs,
 /* Radar */
 let radar={timer:null,map:null};
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
-async function openRadar(){openSheet('Radar',`<div id="map"></div><div class="scrub"><button id="play">Pause</button><span id="ftime"></span></div><p class="note">Radar from RainViewer, past two hours. Pinch to zoom; detail softens past regional zoom.</p>`);
-try{if(!window.L)await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');const rv=await get('https://api.rainviewer.com/public/weather-maps.json');const here=S.pos||DT;
+async function openRadar(){openSheet('Radar',`<div id="map"></div><div class="scrub"><button id="play">Pause</button><span id="ftime"></span></div><p class="note">National Weather Service radar, last 50 minutes. Pinch to zoom.</p>`);
+try{if(!window.L)await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');const here=S.pos||DT;
 const map=L.map('map',{zoomControl:false}).setView([here.lat,here.lon],7);radar.map=map;
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',subdomains:'abcd',maxZoom:11}).addTo(map);
-const frames=rv.radar.past,layers=frames.map(f=>L.tileLayer(`${rv.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,{opacity:0,maxNativeZoom:7,maxZoom:11,attribution:'RainViewer'}).addTo(map));
-let k=layers.length-1;const show=n=>{layers.forEach((l,j)=>l.setOpacity(j===n?.75:0));$('#ftime').textContent=new Date(frames[n].time*1000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})};show(k);
+const bust=Math.floor(Date.now()/3e5),frames=[50,45,40,35,30,25,20,15,10,5,0];
+const layers=frames.map(m=>L.tileLayer(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${m?`-m${pad(m)}m`:''}/{z}/{x}/{y}.png?v=${bust}`,{opacity:0,maxZoom:11,attribution:'NEXRAD via Iowa Environmental Mesonet'}).addTo(map));
+let k=layers.length-1;const show=n=>{layers.forEach((l,j)=>l.setOpacity(j===n?.75:0));$('#ftime').textContent=frames[n]?`${frames[n]} min ago`:'Now'};show(k);
 const play=()=>{radar.timer=setInterval(()=>{k=(k+1)%layers.length;show(k)},700)};play();
 $('#play').onclick=()=>{if(radar.timer){clearInterval(radar.timer);radar.timer=null;$('#play').textContent='Play'}else{play();$('#play').textContent='Pause'}};setTimeout(()=>map.invalidateSize(),300)}
 catch(e){$('#sbody').innerHTML='<p class="note">Radar couldn’t load. Check your connection, then go back and reopen it.</p>'}}
