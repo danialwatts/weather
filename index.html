@@ -27,7 +27,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;paddin
 .temp sup{font-size:38px;letter-spacing:0;color:var(--ice);vertical-align:top;position:relative;top:6px}
 .cond{font-size:20px;margin:10px 0 8px}
 .meta{font-family:var(--mono);font-size:13px;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap}
-.ridge{display:block;width:100%;height:auto;margin-top:14px}
+.ridge{display:block;width:100%;height:auto;margin-top:18px;overflow:visible}
+.gt{font-family:var(--mono);font-size:11px;fill:var(--text)}
+.gx{font-family:var(--sans);font-size:10px;fill:var(--muted)}
+.gcap{color:var(--muted);font-size:12px;margin:4px 0 0}
 .alert{margin:16px 0 0;padding:12px 14px;border-left:2px solid var(--ice);background:rgba(156,211,230,.07);font-size:15px;line-height:1.4}
 .alert.warn{border-color:var(--warm);background:rgba(240,179,138,.08)}
 .rows{list-style:none;margin:10px 0 0;padding:0}
@@ -75,13 +78,8 @@ td.sky{font-family:var(--sans)}
     <div class="temp" id="temp">--</div>
     <div class="cond" id="cond">Loading conditions</div>
     <div class="meta" id="meta"></div>
-    <svg class="ridge" viewBox="0 0 400 80" aria-hidden="true">
-      <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9CD3E6" stop-opacity=".16"/><stop offset="1" stop-color="#9CD3E6" stop-opacity="0"/></linearGradient></defs>
-      <polyline id="arc" fill="none" stroke="#9CD3E6" stroke-opacity=".22" stroke-dasharray="2 5"/>
-      <circle id="glow" r="13" fill="#9CD3E6" opacity="0"/>
-      <circle id="sun" r="4.5" fill="#9CD3E6" opacity="0"/>
-      <path id="rf" fill="#0D1620"/><path id="rg" fill="url(#g)"/><path id="rl" fill="none" stroke="#9CD3E6" stroke-width="1.2"/>
-    </svg>
+    <svg class="ridge" id="graph" viewBox="0 0 400 120" role="img" aria-label="Temperature for the next 24 hours"></svg>
+    <p class="gcap">Next 24 hours. Lighter bands are daylight; bars show the chance of rain or snow.</p>
   </section>
   <div id="banners"></div>
   <ul class="rows">
@@ -105,7 +103,6 @@ const U='&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inc
 const $=s=>document.querySelector(s);
 const r=Math.round;
 const S={};
-const RIDGE=[[0,62],[28,54],[50,58],[76,40],[94,48],[118,26],[136,38],[156,31],[176,16],[196,34],[214,27],[236,44],[258,30],[280,42],[304,23],[322,36],[344,33],[368,50],[400,44]];
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pad=n=>String(n).padStart(2,'0');
@@ -124,15 +121,36 @@ function wx(c){if(c===0)return'Clear';if(c<=2)return'Partly cloudy';if(c===3)ret
 async function get(url,type='json'){const c=new AbortController();const t=setTimeout(()=>c.abort(),12000);try{const res=await fetch(url,{signal:c.signal});if(!res.ok)throw new Error(res.status);return type==='json'?await res.json():await res.text()}finally{clearTimeout(t)}}
 function locate(){return new Promise(res=>{if(!navigator.geolocation)return res(null);navigator.geolocation.getCurrentPosition(p=>res({lat:+p.coords.latitude.toFixed(2),lon:+p.coords.longitude.toFixed(2)}),()=>res(null),{timeout:8000,maximumAge:600000,enableHighAccuracy:false})})}
 
-/* Ridgeline + sun position */
-(function(){const pts=RIDGE.map(p=>p.join(',')).join(' L');const d='M'+pts;$('#rl').setAttribute('d',d);$('#rf').setAttribute('d',d+' L400,80 L0,80Z');$('#rg').setAttribute('d',d+' L400,80 L0,80Z');
-const arc=[];for(let f=0;f<=1.001;f+=.05)arc.push((f*400).toFixed(1)+','+(64-Math.sin(Math.PI*f)*58).toFixed(1));$('#arc').setAttribute('points',arc.join(' '))})();
-function sunDot(d){const t=toMin(localNow(d)),sr=toMin(d.daily.sunrise[0]),ss=toMin(d.daily.sunset[0]);const show=t>=sr&&t<=ss;const f=(t-sr)/(ss-sr);
-['#sun','#glow'].forEach((id,k)=>{const e=$(id);e.setAttribute('opacity',show?(k?'.15':'1'):'0');if(show){e.setAttribute('cx',f*400);e.setAttribute('cy',64-Math.sin(Math.PI*f)*58)}})}
+/* 24-hour temperature graph */
+function drawGraph(d){const h=d.hourly,dl=d.daily,nowH=localNow(d).slice(0,13)+':00';const s=Math.max(0,h.time.indexOf(nowH)),ix=[];for(let i=s;i<Math.min(s+25,h.time.length);i++)ix.push(i);
+const T=ix.map(i=>h.temperature_2m[i]),lo=Math.min(...T),rg=Math.max(Math.max(...T)-lo,6),W=392/(ix.length-1);
+const X=k=>4+k*W,Y=t=>84-(t-lo)/rg*58,pts=ix.map((i,k)=>[X(k),Y(h.temperature_2m[i])]);
+const line='M'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' L');
+const isDay=t=>[0,1].some(k=>dl.sunrise[k]&&t>=dl.sunrise[k].slice(0,13)+':00'&&t<dl.sunset[k]);
+let g='<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9CD3E6" stop-opacity=".18"/><stop offset="1" stop-color="#9CD3E6" stop-opacity="0"/></linearGradient></defs>';
+ix.forEach((i,k)=>{if(isDay(h.time[i]))g+=`<rect x="${(X(k)-W/2).toFixed(1)}" y="0" width="${W.toFixed(1)}" height="96" fill="#9CD3E6" opacity=".05"/>`});
+g+=`<path d="${line} L${X(ix.length-1)},96 L4,96Z" fill="url(#g)"/>`;
+ix.forEach((i,k)=>{const p=h.precipitation_probability[i]??0;if(p>=20)g+=`<rect x="${(X(k)-3).toFixed(1)}" y="${(96-p*.22).toFixed(1)}" width="6" height="${(p*.22).toFixed(1)}" fill="#9CD3E6" opacity=".5"/>`});
+g+=`<path d="${line}" fill="none" stroke="#9CD3E6" stroke-width="1.4" stroke-linejoin="round"/><line x1="0" y1="96" x2="400" y2="96" stroke="#1F3042"/>`;
+ix.forEach((i,k)=>{if(k%3)return;const t=h.temperature_2m[i],a=k===0?'start':k===ix.length-1?'end':'middle';g+=`<text x="${X(k)}" y="${(Y(t)-8).toFixed(1)}" text-anchor="${a}" class="gt">${r(t)}°</text><text x="${X(k)}" y="112" text-anchor="${a}" class="gx">${k?fmtH(+h.time[i].slice(11,13)):'Now'}</text>`});
+g+=`<circle cx="${pts[0][0]}" cy="${pts[0][1]}" r="11" fill="#9CD3E6" opacity=".15"/><circle cx="${pts[0][0]}" cy="${pts[0][1]}" r="4" fill="#9CD3E6"/>`;
+$('#graph').innerHTML=g}
+
+/* Heads-up lines: only shown when something applies */
+function headsUp(d,alerts){const h=d.hourly,s=Math.max(0,h.time.indexOf(localNow(d).slice(0,13)+':00')),end=Math.min(s+24,h.time.length),out=[],fh=i=>fmtH(+h.time[i].slice(11,13));
+alerts.forEach(e=>out.push(['warn',e]));
+const wet=i=>(h.precipitation_probability[i]??0)>=50&&h.weather_code[i]>=51,cur=d.current.weather_code>=51;
+let a=-1;if(!cur)for(let i=s;i<end;i++)if(wet(i)){a=i;break}
+if(cur||a>=0){const st=cur?s:a;let b=-1;for(let i=st+1;i<end;i++)if(!wet(i)){b=i;break}const kind=isSnow(cur?d.current.weather_code:h.weather_code[st])?'Snow':'Rain';let amt='';
+if(kind==='Snow'){let v=0;for(let i=st;i<(b>=0?b:end);i++)v+=h.snowfall[i]||0;amt=v<.5?', under half an inch':`, about ${inch(v)}${cur?' more':''}`}
+out.push(['info',(cur?(b>=0?`${kind} until about ${fh(b)}`:`${kind} continuing through tomorrow`):`${kind} likely from ${fh(a)}${b>=0?` to ${fh(b)}`:''}`)+amt])}
+let dr=null;for(let i=s;i<Math.min(s+12,end)-3;i++){const v=h.temperature_2m[i]-h.temperature_2m[i+3];if(v>=15&&(!dr||v>dr.v))dr={v,i}}if(dr)out.push(['info',`Temps drop ${r(dr.v)}° between ${fh(dr.i)} and ${fh(dr.i+3)}`]);
+let gu=null;for(let i=s;i<Math.min(s+12,end);i++){const v=h.wind_gusts_10m[i];if(v>=35&&(!gu||v>gu.v))gu={v,i}}if(gu)out.push(['info',`Gusts up to ${r(gu.v)} mph around ${fh(gu.i)}`]);
+return out}
 
 /* Current conditions */
 function renderHere(d,label){const c=d.current;$('#loc').textContent=label;$('#temp').innerHTML=r(c.temperature_2m)+'<sup>°</sup>';$('#cond').textContent=wx(c.weather_code);
-$('#meta').innerHTML=`<span>Feels ${r(c.apparent_temperature)}°</span><span>Wind ${r(c.wind_speed_10m)} mph</span><span>Humidity ${c.relative_humidity_2m}%</span>`;sunDot(d)}
+$('#meta').innerHTML=`<span>Feels ${r(c.apparent_temperature)}°</span><span>Wind ${r(c.wind_speed_10m)} mph</span><span>Humidity ${c.relative_humidity_2m}%</span>`;drawGraph(d)}
 
 /* Commute */
 function commuteDays(d,n){const now=localNow(d),today=now.slice(0,10);let ds=today;if(!isWk(ds)||toMin(now)>=17*60){do{ds=addDays(ds,1)}while(!isWk(ds))}const out=[ds];while(out.length<n){do{ds=addDays(ds,1)}while(!isWk(ds));out.push(ds)}return out}
@@ -209,17 +227,19 @@ document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{const k=b.dat
 let last=0;
 async function load(){last=Date.now();$('#updated').textContent='Updating… ';
 const pos=await locate();S.pos=pos;const here=pos||DT;
-const [h,dt,sn,air]=await Promise.allSettled([
-get(`${OM}?latitude=${here.lat}&longitude=${here.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,cloud_cover,wind_speed_10m&daily=sunrise,sunset&forecast_days=2&timezone=auto${U}`),
+const [h,dt,sn,air,hal]=await Promise.allSettled([
+get(`${OM}?latitude=${here.lat}&longitude=${here.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,cloud_cover,wind_speed_10m,wind_gusts_10m,weather_code,snowfall&daily=sunrise,sunset&forecast_days=2&timezone=auto${U}`),
 get(`${OM}?latitude=${DT.lat}&longitude=${DT.lon}&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m&forecast_days=5&timezone=America%2FDenver${U}`),
 get(`${OM}?latitude=${MTNS.map(m=>m[1])}&longitude=${MTNS.map(m=>m[2])}&elevation=${MTNS.map(m=>m[3])}&hourly=snowfall&past_days=2&forecast_days=7&timezone=America%2FDenver${U}`),
-loadAirport()]);
+loadAirport(),get(`https://api.weather.gov/alerts/active?point=${here.lat},${here.lon}`)]);
 const banners=[];
 if(h.status==='fulfilled'){S.here=h.value;renderHere(h.value,pos?'Your location':'Downtown Denver');renderOutside(h.value)}else{$('#cond').textContent='Couldn’t load conditions. Tap Refresh.'}
 if(dt.status==='fulfilled'){S.dt=dt.value;renderCommute(dt.value)}else $('#c-s').textContent='Couldn’t load';
 if(sn.status==='fulfilled'){S.snow=snowData(sn.value);renderSnow(S.snow);powder(S.snow).forEach(t=>banners.push(`<div class="alert">${esc(t)}</div>`))}else $('#s-s').textContent='Couldn’t load';
-if(air.status==='fulfilled'){S.air=air.value;renderAirport(air.value);(air.value.faa||[]).forEach(i=>banners.push(`<div class="alert warn">${esc(i.kind)} at DEN${i.reason?`: ${esc(i.reason)}`:''}</div>`));air.value.alerts.slice(0,2).forEach(x=>banners.push(`<div class="alert warn">${esc(x.event)}</div>`))}
-$('#banners').innerHTML=banners.join('');
+if(air.status==='fulfilled'){S.air=air.value;renderAirport(air.value);(air.value.faa||[]).forEach(i=>banners.push(`<div class="alert warn">${esc(i.kind)} at DEN${i.reason?`: ${esc(i.reason)}`:''}</div>`))}
+const hereAlerts=hal.status==='fulfilled'?[...new Set((hal.value.features||[]).map(x=>x.properties.event))]:[];
+const hu=h.status==='fulfilled'?headsUp(h.value,hereAlerts):[];
+$('#banners').innerHTML=hu.map(([k,t])=>`<div class="alert${k==='warn'?' warn':''}">${esc(t)}</div>`).join('')+banners.join('');
 $('#updated').textContent='Updated '+new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}
 $('#refresh').onclick=load;
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-last>10*60*1000)load()});
