@@ -69,10 +69,21 @@ td.sky{font-family:var(--sans)}
 .leaflet-control-attribution a{color:var(--muted)!important}
 .scrub{display:flex;align-items:center;gap:14px;margin-top:12px;font-family:var(--mono);font-size:13px;color:var(--muted)}
 .scrub button{color:var(--ice)}
+body{min-height:100vh;background:linear-gradient(180deg,rgba(var(--tint,79,106,138),.26) 0,rgba(var(--tint,79,106,138),.08) 38%,rgba(13,22,32,0) 70%) no-repeat,var(--bg)}
+#ptr{height:0;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;color:var(--muted);font-size:13px;transition:height .2s}
+.week{display:grid;grid-template-columns:repeat(7,1fr);margin-top:18px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.week button{padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:3px}
+.week .d{font-size:12px;color:var(--muted)}
+.week .wh{font-family:var(--mono);font-size:15px}
+.week .wl{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.week .wp{font-family:var(--mono);font-size:11px;color:var(--ice);min-height:14px}
+.key{height:8px;border-radius:4px;background:linear-gradient(90deg,#6e8fc4,#3fa36b,#2fd13a,#f2e43a,#f28c28,#e0302a,#d33cd3);margin-top:14px}
+.keyl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:4px}
 </style>
 </head>
 <body>
 <main>
+  <div id="ptr" aria-hidden="true"></div>
   <div class="top"><span id="loc">Locating…</span><span><span id="updated"></span><button class="refresh" id="refresh">Refresh</button></span></div>
   <section class="hero" aria-live="polite">
     <div class="temp" id="temp">--</div>
@@ -80,6 +91,7 @@ td.sky{font-family:var(--sans)}
     <div class="meta" id="meta"></div>
     <svg class="ridge" id="graph" viewBox="0 0 400 120" role="img" aria-label="Temperature for the next 24 hours"></svg>
     <p class="gcap">Next 24 hours. Lighter bands are daylight; bars show the chance of rain or snow.</p>
+    <div class="week" id="week"></div>
   </section>
   <div id="banners"></div>
   <ul class="rows">
@@ -150,17 +162,18 @@ return out}
 
 /* Current conditions */
 function renderHere(d,label){const c=d.current;$('#loc').textContent=label;$('#temp').innerHTML=r(c.temperature_2m)+'<sup>°</sup>';$('#cond').textContent=wx(c.weather_code);
-$('#meta').innerHTML=`<span>Feels ${r(c.apparent_temperature)}°</span><span>Wind ${r(c.wind_speed_10m)} mph</span><span>Humidity ${c.relative_humidity_2m}%</span>`;drawGraph(d)}
+$('#meta').innerHTML=`<span>Feels ${r(c.apparent_temperature)}°</span><span>Wind ${r(c.wind_speed_10m)} mph</span><span>Humidity ${c.relative_humidity_2m}%</span>`;drawGraph(d);tint(c.temperature_2m)}
 
 /* Commute */
 function commuteDays(d,n){const now=localNow(d),today=now.slice(0,10);let ds=today;if(!isWk(ds)||toMin(now)>=17*60){do{ds=addDays(ds,1)}while(!isWk(ds))}const out=[ds];while(out.length<n){do{ds=addDays(ds,1)}while(!isWk(ds));out.push(ds)}return out}
 function leg(h,day,hrs){const ix=hrs.map(x=>h.time.indexOf(`${day}T${pad(x)}:00`)).filter(i=>i>=0);if(!ix.length)return null;
 const feel=Math.min(...ix.map(i=>h.apparent_temperature[i])),p=Math.max(...ix.map(i=>h.precipitation_probability[i]??0)),w=Math.max(...ix.map(i=>h.wind_speed_10m[i])),snow=ix.some(i=>isSnow(h.weather_code[i]));
-let s=p>=50?(snow?'Snow likely, wear boots':'Rain likely, bring an umbrella'):p>=25?(snow?'Chance of snow':'Chance of rain, umbrella just in case'):'Dry walk';if(w>=20)s+=', windy';if(feel<=20)s+=', bundle up';return{feel:r(feel),s}}
+let s=p>=50?(snow?'Snow likely, wear boots':'Rain likely, bring an umbrella'):p>=25?(snow?'Chance of snow':'Chance of rain, umbrella just in case'):'Dry walk';if(w>=20)s+=', windy';const heavy=ix.some(i=>(h.precipitation[i]||0)>=.1&&!isSnow(h.weather_code[i]));return{feel:r(feel),s,wear:wear(feel,heavy),base:wearBase(feel)}}
 function renderCommute(d){const h=d.hourly,now=localNow(d),today=now.slice(0,10),[day]=commuteDays(d,1);const pm=day===today&&toMin(now)>=8*60+15;const L=leg(h,day,pm?[16,17]:[7,8]);if(!L)return;
-$('#c-big').textContent=L.feel+'°';$('#c-s').textContent=`${pm?'Walk home':'Walk in'} ${day===today?'today':wkName(day)}: ${L.s}`}
+$('#c-big').textContent=L.feel+'°';let w=L.wear;if(!pm){const P=leg(h,day,[16,17]);if(P&&L.base==='Hoodie'&&P.base==='T-shirt')w+=', T-shirt weather by the walk home'}
+$('#c-s').textContent=`${pm?'Walk home':'Walk in'} ${day===today?'today':wkName(day)}: ${L.s}. ${w}.`}
 function commuteDetail(){const d=S.dt;if(!d)return fail();const h=d.hourly,today=localNow(d).slice(0,10);
-return commuteDays(d,2).map(day=>{const legs=[['Walk in',[7,8]],['Walk home',[16,17]]].map(([n,hs])=>{const L=leg(h,day,hs);return L?`${n}: ${L.s.toLowerCase()}`:''}).filter(Boolean).join('. ');
+return commuteDays(d,2).map(day=>{const legs=[['Walk in',[7,8]],['Walk home',[16,17]]].map(([n,hs])=>{const L=leg(h,day,hs);return L?`${n}: ${L.s.toLowerCase()}, ${L.wear.toLowerCase()}`:''}).filter(Boolean).join('. ');
 return `<h3>${dayWord(day,today)}</h3><p class="note" style="margin:0 0 6px">${esc(legs)}</p><div class="wrap"><table><tr><th>Time</th><th>Temp</th><th>Feels</th><th>Precip</th><th>Wind</th><th>Sky</th></tr>${[7,8,16,17].map(x=>{const i=h.time.indexOf(`${day}T${pad(x)}:00`);return i<0?'':`<tr><td>${fmtH(x)}</td><td>${r(h.temperature_2m[i])}°</td><td>${r(h.apparent_temperature[i])}°</td><td>${h.precipitation_probability[i]??0}%</td><td>${r(h.wind_speed_10m[i])}</td><td class="sky">${wx(h.weather_code[i])}</td></tr>`}).join('')}</table></div>`}).join('')+`<p class="note">Covers your 7:30–8:15am and 4–5pm walks, Monday to Friday, in downtown Denver. Each line shows the worst conditions in that window.</p>`}
 
 /* Best time outside */
@@ -201,7 +214,7 @@ return h+`<p class="note">FAA status covers ground stops, ground delay programs,
 /* Radar */
 let radar={timer:null,map:null};
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
-async function openRadar(){openSheet('Radar',`<div id="map"></div><div class="scrub"><button id="play">Pause</button><span id="ftime"></span></div><p class="note">National Weather Service radar, last 50 minutes. Pinch to zoom.</p>`);
+async function openRadar(){openSheet('Radar',`<div id="map"></div><div class="scrub"><button id="play">Pause</button><span id="ftime"></span></div><div class="key"></div><div class="keyl"><span>Light</span><span>Moderate</span><span>Heavy</span><span>Extreme</span></div><p class="note">${fallingNow()}Colors show how hard it’s coming down, not rain versus snow. Snow often looks lighter on radar than it really is. National Weather Service radar, last 50 minutes.</p>`);
 try{if(!window.L)await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');const here=S.pos||DT;
 const map=L.map('map',{zoomControl:false}).setView([here.lat,here.lon],7);radar.map=map;
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri',maxZoom:11}).addTo(map);
@@ -223,26 +236,58 @@ addEventListener('popstate',closeSheet);
 const DETAIL={commute:['Commute',commuteDetail],outside:['Best time outside',outsideDetail],snow:['Mountain snow',snowDetail],airport:['Airport status',airportDetail]};
 document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{const k=b.dataset.open;if(k==='radar')return openRadar();const[t,fn]=DETAIL[k];openSheet(t,fn())});
 
+/* V2 helpers */
+function wearBase(f){return f<20?'Puffer':f<35?(f<27?'Puffer':'Jacket'):f<50?(f<42?'Jacket':'Hoodie'):f<65?(f<57?'Hoodie':'T-shirt'):'T-shirt'}
+function wear(f,heavy){const b=wearBase(f);return b+((b==='Puffer'||b==='Jacket')&&f<30?' and a beanie':'')+(heavy?', maybe a hat for the rain':'')}
+const clk=s=>{const m=toMin(s),hh=Math.floor(m/60);return`${hh%12||12}:${pad(m%60)}${hh<12?'am':'pm'}`};
+function nudge(d){const h=d.hourly,now=localNow(d),today=now.slice(0,10),m=toMin(now);if(!isWk(today))return null;const am=m<8*60+15;if(!am&&m>=17*60)return null;
+const[a,b]=am?[7,8]:[16,17],ia=h.time.indexOf(`${today}T${pad(a)}:00`),ib=h.time.indexOf(`${today}T${pad(b)}:00`);if(ia<0||ib<0)return null;
+const wet=i=>(h.precipitation_probability[i]??0)>=40,sn=isSnow(h.weather_code[ia])||isSnow(h.weather_code[ib])?'snow':'rain';
+if(!wet(ia)&&wet(ib))return am?`Leave before 8 to beat the ${sn}`:`Head home before 5 to beat the ${sn}`;
+if(wet(ia)&&!wet(ib))return am?'Drier after 8, wait a bit if you can':'Drier after 5, wait a bit if you can';return null}
+function sunset(d){const h=d.hourly,now=localNow(d),ss=d.daily.sunset[0];if(toMin(now)<12*60||now>=ss.slice(0,16))return null;const i=h.time.indexOf(ss.slice(0,13)+':00');if(i<0)return null;
+const mh=Math.max(h.cloud_cover_mid[i],h.cloud_cover_high[i]);if(mh>=25&&mh<=75&&h.cloud_cover_low[i]<40&&(h.precipitation_probability[i]??0)<30)return`Good sunset likely tonight around ${clk(ss)}`;return null}
+function fallingNow(){const c=S.here?.current?.weather_code;if(c==null)return'';return c>=51?`${isSnow(c)?'Snow':'Rain'} is falling where you are now. `:'Nothing is falling where you are now. '}
+function tint(t){const A=[10,[62,127,168]],B=[50,[79,106,138]],Cc=[85,[184,112,74]];let c;if(t<=A[0])c=A[1];else if(t>=Cc[0])c=Cc[1];else{const[a,b]=t<B[0]?[A,B]:[B,Cc],f=(t-a[0])/(b[0]-a[0]);c=a[1].map((v,j)=>r(v+(b[1][j]-v)*f))}document.body.style.setProperty('--tint',c.join(','))}
+function renderWeek(d){const dl=d.daily;$('#week').innerHTML=dl.time.map((ds,k)=>{const p=dl.precipitation_probability_max[k]??0,sn=dl.snowfall_sum[k]||0;
+return`<button data-day="${k}" aria-label="${wkName(ds)} forecast"><span class="d">${k?wkName(ds,'short'):'Today'}</span><span class="wh">${r(dl.temperature_2m_max[k])}°</span><span class="wl">${r(dl.temperature_2m_min[k])}°</span><span class="wp">${sn>=.5?inch(sn):p>=30?p+'%':''}</span></button>`}).join('');
+$('#week').querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=+b.dataset.day;openSheet(k?wkName(dl.time[k]):'Today',dayDetail(k))})}
+function dayDetail(k){const d=S.here;if(!d)return fail();const h=d.hourly,dl=d.daily,ds=dl.time[k],nowH=localNow(d).slice(0,13),sn=dl.snowfall_sum[k]||0;
+const rows=h.time.map((t,i)=>[t,i]).filter(([t])=>t.startsWith(ds)&&(k||t.slice(0,13)>=nowH));
+return`<p style="margin:14px 0 4px;font-size:17px">${wx(dl.weather_code[k])}, high ${r(dl.temperature_2m_max[k])}°, low ${r(dl.temperature_2m_min[k])}°</p><p class="note" style="margin:0">Sunrise ${clk(dl.sunrise[k])}, sunset ${clk(dl.sunset[k])}${sn>=.1?`, about ${inch(sn)} of snow`:''}</p>
+<div class="wrap"><table style="margin-top:12px"><tr><th>Time</th><th>Temp</th><th>Precip</th><th>Wind</th><th>Sky</th></tr>${rows.map(([t,i])=>`<tr><td>${fmtH(+t.slice(11,13))}</td><td>${r(h.temperature_2m[i])}°</td><td>${h.precipitation_probability[i]??0}%</td><td>${r(h.wind_speed_10m[i])}</td><td class="sky">${wx(h.weather_code[i])}</td></tr>`).join('')}</table></div><p class="note">For where you are now.</p>`}
+function readCache(){try{return JSON.parse(localStorage.getItem('fr-cache'))}catch(e){return null}}
+function render(D){const banners=[];
+if(D.here){S.here=D.here;renderHere(D.here,D.label);renderOutside(D.here);renderWeek(D.here)}else $('#cond').textContent='Couldn’t load conditions. Tap Refresh.';
+if(D.dt){S.dt=D.dt;renderCommute(D.dt)}else $('#c-s').textContent='Couldn’t load';
+if(D.sn){S.snow=snowData(D.sn);renderSnow(S.snow);powder(S.snow).forEach(t=>banners.push(`<div class="alert">${esc(t)}</div>`))}else $('#s-s').textContent='Couldn’t load';
+if(D.air){S.air=D.air;renderAirport(D.air);(D.air.faa||[]).forEach(i=>banners.push(`<div class="alert warn">${esc(i.kind)} at DEN${i.reason?`: ${esc(i.reason)}`:''}</div>`))}
+const al=D.hal?[...new Set((D.hal.features||[]).map(x=>x.properties.event))]:[];
+const hu=(D.here?headsUp(D.here,al):[]).concat([D.dt&&nudge(D.dt),D.here&&sunset(D.here)].filter(Boolean).map(t=>['info',t]));
+$('#banners').innerHTML=hu.map(([k,t])=>`<div class="alert${k==='warn'?' warn':''}">${esc(t)}</div>`).join('')+banners.join('');
+$('#updated').textContent='Updated '+new Date(D.t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' '}
+
+/* Pull to refresh */
+let py=null,pd=0;
+addEventListener('touchstart',e=>{py=(scrollY<=0&&!$('#sheet').classList.contains('open'))?e.touches[0].clientY:null;pd=0},{passive:true});
+addEventListener('touchmove',e=>{if(py===null)return;pd=e.touches[0].clientY-py;if(pd>0){$('#ptr').style.height=Math.min(pd*.45,56)+'px';$('#ptr').textContent=pd>110?'Release to refresh':'Pull to refresh'}},{passive:true});
+addEventListener('touchend',()=>{if(py!==null&&pd>110)load();$('#ptr').style.height='0';py=null;pd=0});
+
 /* Load */
 let last=0;
 async function load(){last=Date.now();$('#updated').textContent='Updating… ';
 const pos=await locate();S.pos=pos;const here=pos||DT;
-const [h,dt,sn,air,hal]=await Promise.allSettled([
-get(`${OM}?latitude=${here.lat}&longitude=${here.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,cloud_cover,wind_speed_10m,wind_gusts_10m,weather_code,snowfall&daily=sunrise,sunset&forecast_days=2&timezone=auto${U}&models=gfs_seamless`),
-get(`${OM}?latitude=${DT.lat}&longitude=${DT.lon}&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m&forecast_days=5&timezone=America%2FDenver${U}&models=gfs_seamless`),
+const res=await Promise.allSettled([
+get(`${OM}?latitude=${here.lat}&longitude=${here.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,precipitation,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_10m,wind_gusts_10m,weather_code,snowfall&daily=sunrise,sunset,temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,snowfall_sum&forecast_days=7&timezone=auto${U}&models=gfs_seamless`),
+get(`${OM}?latitude=${DT.lat}&longitude=${DT.lon}&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m&forecast_days=5&timezone=America%2FDenver${U}&models=gfs_seamless`),
 get(`${OM}?latitude=${MTNS.map(m=>m[1])}&longitude=${MTNS.map(m=>m[2])}&elevation=${MTNS.map(m=>m[3])}&hourly=snowfall&past_days=2&forecast_days=7&timezone=America%2FDenver${U}`),
-loadAirport(),get(`https://api.weather.gov/alerts/active?point=${here.lat},${here.lon}`)]);
-const banners=[];
-if(h.status==='fulfilled'){S.here=h.value;renderHere(h.value,pos?'Your location':'Downtown Denver');renderOutside(h.value)}else{$('#cond').textContent='Couldn’t load conditions. Tap Refresh.'}
-if(dt.status==='fulfilled'){S.dt=dt.value;renderCommute(dt.value)}else $('#c-s').textContent='Couldn’t load';
-if(sn.status==='fulfilled'){S.snow=snowData(sn.value);renderSnow(S.snow);powder(S.snow).forEach(t=>banners.push(`<div class="alert">${esc(t)}</div>`))}else $('#s-s').textContent='Couldn’t load';
-if(air.status==='fulfilled'){S.air=air.value;renderAirport(air.value);(air.value.faa||[]).forEach(i=>banners.push(`<div class="alert warn">${esc(i.kind)} at DEN${i.reason?`: ${esc(i.reason)}`:''}</div>`))}
-const hereAlerts=hal.status==='fulfilled'?[...new Set((hal.value.features||[]).map(x=>x.properties.event))]:[];
-const hu=h.status==='fulfilled'?headsUp(h.value,hereAlerts):[];
-$('#banners').innerHTML=hu.map(([k,t])=>`<div class="alert${k==='warn'?' warn':''}">${esc(t)}</div>`).join('')+banners.join('');
-$('#updated').textContent='Updated '+new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}
+loadAirport(),get(`https://api.weather.gov/alerts/active?point=${here.lat},${here.lon}`)]);const v=x=>x.status==='fulfilled'?x.value:null;
+const D={t:Date.now(),label:pos?'Your location':'Downtown Denver',here:v(res[0]),dt:v(res[1]),sn:v(res[2]),air:v(res[3]),hal:v(res[4])};
+const C=readCache();if(C)for(const k of['here','dt','sn','air','hal'])if(!D[k]&&C[k])D[k]=C[k];
+render(D);if(D.here||D.dt||D.sn)try{localStorage.setItem('fr-cache',JSON.stringify(D))}catch(e){}}
 $('#refresh').onclick=load;
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-last>10*60*1000)load()});
+const C0=readCache();if(C0)try{render(C0)}catch(e){}
 load();
 </script>
 </body>
