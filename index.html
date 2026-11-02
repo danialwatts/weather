@@ -228,8 +228,8 @@ let last=0;
 async function load(){last=Date.now();$('#updated').textContent='Updating… ';
 const pos=await locate();S.pos=pos;const here=pos||DT;
 const [h,dt,sn,air,hal]=await Promise.allSettled([
-get(`${OM}?latitude=${here.lat}&longitude=${here.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,cloud_cover,wind_speed_10m,wind_gusts_10m,weather_code,snowfall&daily=sunrise,sunset&forecast_days=2&timezone=auto${U}`),
-get(`${OM}?latitude=${DT.lat}&longitude=${DT.lon}&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m&forecast_days=5&timezone=America%2FDenver${U}`),
+get(`${OM}?latitude=${here.lat}&longitude=${here.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,cloud_cover,wind_speed_10m,wind_gusts_10m,weather_code,snowfall&daily=sunrise,sunset&forecast_days=2&timezone=auto${U}&models=gfs_seamless`),
+get(`${OM}?latitude=${DT.lat}&longitude=${DT.lon}&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m&forecast_days=5&timezone=America%2FDenver${U}&models=gfs_seamless`),
 get(`${OM}?latitude=${MTNS.map(m=>m[1])}&longitude=${MTNS.map(m=>m[2])}&elevation=${MTNS.map(m=>m[3])}&hourly=snowfall&past_days=2&forecast_days=7&timezone=America%2FDenver${U}`),
 loadAirport(),get(`https://api.weather.gov/alerts/active?point=${here.lat},${here.lon}`)]);
 const banners=[];
