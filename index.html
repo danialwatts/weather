@@ -186,7 +186,9 @@ function loadScript(src){return new Promise((res,rej)=>{const s=document.createE
 async function openRadar(){openSheet('Radar',`<div id="map"></div><div class="scrub"><button id="play">Pause</button><span id="ftime"></span></div><p class="note">National Weather Service radar, last 50 minutes. Pinch to zoom.</p>`);
 try{if(!window.L)await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');const here=S.pos||DT;
 const map=L.map('map',{zoomControl:false}).setView([here.lat,here.lon],7);radar.map=map;
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',subdomains:'abcd',maxZoom:11}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri',maxZoom:11}).addTo(map);
+map.createPane('labels');map.getPane('labels').style.zIndex=650;map.getPane('labels').style.pointerEvents='none';
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',{pane:'labels',maxZoom:11}).addTo(map);
 const bust=Math.floor(Date.now()/3e5),frames=[50,45,40,35,30,25,20,15,10,5,0];
 const layers=frames.map(m=>L.tileLayer(`https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913${m?`-m${pad(m)}m`:''}/{z}/{x}/{y}.png?v=${bust}`,{opacity:0,maxZoom:11,attribution:'NEXRAD via Iowa Environmental Mesonet'}).addTo(map));
 let k=layers.length-1;const show=n=>{layers.forEach((l,j)=>l.setOpacity(j===n?.75:0));$('#ftime').textContent=frames[n]?`${frames[n]} min ago`:'Now'};show(k);
